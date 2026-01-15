@@ -2,6 +2,7 @@ export function createHud(root) {
   root.innerHTML = `
     <div class="panel">
       <div id="status">Connecting...</div>
+      <div class="hint">Move: WASD/Arrows · Build: B</div>
       <button id="mail-refresh" type="button">Refresh mail</button>
     </div>
     <div class="panel">

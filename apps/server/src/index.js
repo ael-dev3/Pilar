@@ -7,6 +7,7 @@ import { CLIENT, SERVER, parseMessage } from "./protocol.js";
 import {
   getSnapshot,
   movePlayer,
+  placeTile,
   sendMail,
   listMail,
   popNotifications
@@ -60,6 +61,12 @@ wss.on("connection", (ws) => {
 
     if (msg.type === CLIENT.MOVE) {
       movePlayer(fid, Number(msg.dx) || 0, Number(msg.dy) || 0);
+      send(ws, { type: SERVER.STATE, data: getSnapshot(fid) });
+      return;
+    }
+
+    if (msg.type === CLIENT.BUILD) {
+      placeTile(fid);
       send(ws, { type: SERVER.STATE, data: getSnapshot(fid) });
       return;
     }

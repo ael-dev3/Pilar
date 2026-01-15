@@ -130,6 +130,20 @@ export function createNet() {
     send("move", { dx, dy });
   }
 
+  function sendBuild() {
+    if (offline) {
+      withWorld((world) => {
+        const player = getOrCreatePlayer(world, fid);
+        const space = getOrCreateSpace(world, fid);
+        placeTile(space, player.x, player.y, "home");
+      });
+      emitState(fid);
+      listeners.notify([{ text: "Tile placed" }]);
+      return;
+    }
+    send("build", {});
+  }
+
   function sendMail({ to, subject, body }) {
     if (offline) {
       const cleanTo = (to || "").toString().trim();
@@ -181,6 +195,7 @@ export function createNet() {
   return {
     join,
     sendMove,
+    sendBuild,
     sendMail,
     requestMail,
     onState,
@@ -258,6 +273,13 @@ function createObelisk(home) {
     }
   }
   return tiles;
+}
+
+function placeTile(space, x, y, type) {
+  const exists = space.tiles.some((tile) => tile.x === x && tile.y === y);
+  if (!exists) {
+    space.tiles.push({ x, y, type });
+  }
 }
 
 function listNearbySpaces(world, player, radius) {

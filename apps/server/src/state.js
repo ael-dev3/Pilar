@@ -56,6 +56,21 @@ export function movePlayer(fid, dx, dy) {
   return player;
 }
 
+export function placeTile(fid) {
+  const player = getOrCreatePlayer(fid);
+  const space = world.spaces.get(fid);
+  if (!space) {
+    return null;
+  }
+  const exists = space.tiles.some(
+    (tile) => tile.x === player.x && tile.y === player.y
+  );
+  if (!exists) {
+    space.tiles.push({ x: player.x, y: player.y, type: "home" });
+  }
+  return space;
+}
+
 export function getSnapshot(fid) {
   const player = getOrCreatePlayer(fid);
   const spaces = listNearbySpaces(player, 40);

@@ -1,6 +1,7 @@
 export const CLIENT = {
   HELLO: "hello",
   MOVE: "move",
+  BUILD: "build",
   MAIL_SEND: "mail_send",
   MAIL_LIST: "mail_list"
 };

@@ -16,6 +16,7 @@ Running
 1. npm install
 2. npm run dev
 3. open http://localhost:3000/?fid=1234
+4. move with WASD/Arrows, place a tile with B
 
 Notes
 - State is in memory and resets on restart.

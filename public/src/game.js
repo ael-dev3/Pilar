@@ -27,7 +27,18 @@ export function createGame({ ctx, net }) {
     if (event.repeat) {
       return;
     }
-    const move = keyMap[event.key];
+    const target = event.target;
+    const tagName = target && target.tagName;
+    if (tagName === "INPUT" || tagName === "TEXTAREA") {
+      return;
+    }
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    if (key === "b" || event.code === "Space") {
+      event.preventDefault();
+      net.sendBuild();
+      return;
+    }
+    const move = keyMap[key];
     if (!move) {
       return;
     }
