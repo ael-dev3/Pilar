@@ -2,7 +2,8 @@ export function createHud(root) {
   root.innerHTML = `
     <div class="panel">
       <div id="status">Connecting...</div>
-      <div class="hint">Move: WASD/Arrows · Build: B</div>
+      <div class="hint">Move: WASD/Arrows or tap. Build: B or button.</div>
+      <button id="build-btn" type="button">Place tile</button>
       <button id="mail-refresh" type="button">Refresh mail</button>
     </div>
     <div class="panel">
@@ -25,11 +26,13 @@ export function createHud(root) {
   const mailListEl = root.querySelector("#mail-list");
   const notifyListEl = root.querySelector("#notify-list");
   const form = root.querySelector("#mail-form");
+  const buildBtn = root.querySelector("#build-btn");
   const refreshBtn = root.querySelector("#mail-refresh");
 
   const handlers = {
     mailSend: () => {},
-    mailRefresh: () => {}
+    mailRefresh: () => {},
+    build: () => {}
   };
 
   form.addEventListener("submit", (event) => {
@@ -48,6 +51,7 @@ export function createHud(root) {
   });
 
   refreshBtn.addEventListener("click", () => handlers.mailRefresh());
+  buildBtn.addEventListener("click", () => handlers.build());
 
   function setStatus(text) {
     statusEl.textContent = text;
@@ -90,12 +94,17 @@ export function createHud(root) {
     handlers.mailRefresh = fn;
   }
 
+  function onBuild(fn) {
+    handlers.build = fn;
+  }
+
   return {
     setStatus,
     setMail,
     pushNotifications,
     onMailSend,
-    onMailRefresh
+    onMailRefresh,
+    onBuild
   };
 }
 

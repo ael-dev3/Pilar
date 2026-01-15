@@ -22,6 +22,27 @@ export function createGame({ ctx, net }) {
     player: null,
     spaces: []
   };
+  const canvas = ctx.canvas;
+
+  canvas.addEventListener("pointerdown", (event) => {
+    if (!state.player) {
+      return;
+    }
+    event.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const dx = event.clientX - rect.left - rect.width / 2;
+    const dy = event.clientY - rect.top - rect.height / 2;
+    const deadZone = 12;
+    if (Math.abs(dx) < deadZone && Math.abs(dy) < deadZone) {
+      net.sendBuild();
+      return;
+    }
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      net.sendMove(Math.sign(dx), 0);
+      return;
+    }
+    net.sendMove(0, Math.sign(dy));
+  });
 
   window.addEventListener("keydown", (event) => {
     if (event.repeat) {

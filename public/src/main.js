@@ -9,20 +9,31 @@ const hud = createHud(document.getElementById("hud"));
 const net = createNet();
 const game = createGame({ ctx, net, hud });
 
+const fid = getFid();
+let connectionLabel = "Connecting";
+
+function updateStatus() {
+  hud.setStatus(`FID ${fid} - ${connectionLabel}`);
+}
+
+updateStatus();
+
 net.onState((snapshot) => {
   game.setState(snapshot);
 });
 
 net.onMail((items) => hud.setMail(items));
 net.onNotify((items) => hud.pushNotifications(items));
+net.onStatus((label) => {
+  connectionLabel = label;
+  updateStatus();
+});
 
 hud.onMailSend((payload) => net.sendMail(payload));
 hud.onMailRefresh(() => net.requestMail());
+hud.onBuild(() => net.sendBuild());
 
 game.start();
-
-const fid = getFid();
-hud.setStatus(`FID ${fid}`);
 net.join(fid);
 
 function getFid() {

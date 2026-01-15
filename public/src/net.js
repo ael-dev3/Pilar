@@ -2,20 +2,47 @@ const STORAGE_KEY = "pilar_offline_world_v1";
 const HOME_SPACING = 24;
 const SEED_FIDS = ["demo-1", "demo-2", "demo-3"];
 const OPEN_TIMEOUT_MS = 1200;
+const storage = getStorage();
+let memoryWorld = createWorld();
 
 export function createNet() {
   const listeners = {
     state: () => {},
     mail: () => {},
-    notify: () => {}
+    notify: () => {},
+    status: () => {}
   };
 
   let ws = null;
   let fid = null;
   let offline = false;
   let openTimer = null;
+  let offlineNotified = false;
+  let notifyReady = false;
+  let statusText = "Connecting";
+
+  function setStatus(text) {
+    statusText = text;
+    listeners.status(text);
+  }
+
+  function notifyOffline() {
+    if (offlineNotified) {
+      return;
+    }
+    if (!notifyReady) {
+      return;
+    }
+    offlineNotified = true;
+    listeners.notify([{ text: "Offline demo mode" }]);
+  }
 
   function connect() {
+    if (offline) {
+      return;
+    }
+    clearTimeout(openTimer);
+    setStatus("Connecting");
     ws = new WebSocket(getWsUrl());
     let opened = false;
 
@@ -28,6 +55,11 @@ export function createNet() {
     ws.addEventListener("open", () => {
       opened = true;
       clearTimeout(openTimer);
+      if (offline) {
+        ws.close();
+        return;
+      }
+      setStatus("Online");
       if (fid) {
         send("hello", { fid });
       }
@@ -52,6 +84,7 @@ export function createNet() {
     ws.addEventListener("close", () => {
       clearTimeout(openTimer);
       if (!offline) {
+        setStatus("Reconnecting");
         setTimeout(connect, 1000);
       }
     });
@@ -69,6 +102,8 @@ export function createNet() {
       return;
     }
     offline = true;
+    clearTimeout(openTimer);
+    setStatus("Offline demo");
     try {
       ws?.close();
     } catch {
@@ -78,7 +113,7 @@ export function createNet() {
       emitState(fid);
       emitMailSnapshot(fid);
     }
-    listeners.notify([{ text: "Offline demo mode" }]);
+    notifyOffline();
   }
 
   function emitState(activeFid) {
@@ -101,8 +136,10 @@ export function createNet() {
   function join(nextFid) {
     fid = nextFid;
     if (offline) {
+      setStatus("Offline demo");
       emitState(fid);
       emitMailSnapshot(fid);
+      notifyOffline();
       return;
     }
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -118,6 +155,9 @@ export function createNet() {
   }
 
   function sendMove(dx, dy) {
+    if (!fid) {
+      return;
+    }
     if (offline) {
       withWorld((world) => {
         const player = getOrCreatePlayer(world, fid);
@@ -131,6 +171,9 @@ export function createNet() {
   }
 
   function sendBuild() {
+    if (!fid) {
+      return;
+    }
     if (offline) {
       withWorld((world) => {
         const player = getOrCreatePlayer(world, fid);
@@ -145,6 +188,9 @@ export function createNet() {
   }
 
   function sendMail({ to, subject, body }) {
+    if (!fid) {
+      return;
+    }
     if (offline) {
       const cleanTo = (to || "").toString().trim();
       const cleanBody = (body || "").toString().trim();
@@ -171,6 +217,9 @@ export function createNet() {
   }
 
   function requestMail() {
+    if (!fid) {
+      return;
+    }
     if (offline) {
       emitMailSnapshot(fid);
       return;
@@ -187,7 +236,18 @@ export function createNet() {
   }
 
   function onNotify(fn) {
+    notifyReady = true;
     listeners.notify = fn;
+    if (offline) {
+      notifyOffline();
+    }
+  }
+
+  function onStatus(fn) {
+    listeners.status = fn;
+    if (statusText) {
+      listeners.status(statusText);
+    }
   }
 
   connect();
@@ -200,7 +260,8 @@ export function createNet() {
     requestMail,
     onState,
     onMail,
-    onNotify
+    onNotify,
+    onStatus
   };
 }
 
@@ -339,7 +400,11 @@ function createWorld() {
 }
 
 function loadWorld() {
-  const raw = window.localStorage.getItem(STORAGE_KEY);
+  if (!storage) {
+    ensureSeeds(memoryWorld);
+    return memoryWorld;
+  }
+  const raw = storage.getItem(STORAGE_KEY);
   let world = createWorld();
   if (raw) {
     try {
@@ -358,7 +423,15 @@ function loadWorld() {
 }
 
 function saveWorld(world) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(world));
+  if (!storage) {
+    memoryWorld = world;
+    return;
+  }
+  try {
+    storage.setItem(STORAGE_KEY, JSON.stringify(world));
+  } catch {
+    // ignore storage failures
+  }
 }
 
 function withWorld(mutator) {
@@ -378,5 +451,19 @@ function ensureSeeds(world) {
         tiles: createObelisk(home)
       };
     }
+  }
+}
+
+function getStorage() {
+  try {
+    if (!window.localStorage) {
+      return null;
+    }
+    const testKey = "__pilar_storage_test__";
+    window.localStorage.setItem(testKey, "1");
+    window.localStorage.removeItem(testKey);
+    return window.localStorage;
+  } catch {
+    return null;
   }
 }
