@@ -1,0 +1,144 @@
+SpacetimeDB TypeScript Reference (LLM)
+
+Overview
+- The SpacetimeDB TypeScript SDK lets you build clients for SpacetimeDB modules in browser or Node.js.
+- This file summarizes project setup, bindings generation, connection lifecycle, subscriptions, reducers, and client cache.
+
+Project setup
+1) tsconfig.json
+{
+  "compilerOptions": {
+    "target": "es2015"
+  }
+}
+2) Install SDK
+npm install spacetimedb
+Note: The old @clockworklabs/spacetimedb-sdk is deprecated as of SpacetimeDB 1.4.0. Use spacetimedb and CLI 1.4.0+.
+
+Typical layout
+project-root
+??? client
+?   ??? node_modules
+?   ??? public
+?   ??? src
+??? server
+    ??? src
+
+Quick script tip
+- Use tsx to run TypeScript scripts: npx tsx src/script.ts
+
+Generate module bindings
+1) Create bindings folder
+mkdir -p client/src/module_bindings
+2) Generate bindings
+spacetime generate --lang typescript \
+    --out-dir client/src/module_bindings \
+    --project-path PATH-TO-MODULE-DIRECTORY
+3) Import bindings and SDK types
+import * as moduleBindings from './module_bindings/index';
+import { Identity, ConnectionId, Event, ReducerEvent } from 'spacetimedb';
+
+DbConnection (per-module generated type)
+- Build connections with DbConnection.builder().
+- Required config:
+  - withUri(uri: string)
+  - withModuleName(nameOrIdentity: string)
+- Optional callbacks:
+  - onConnect((ctx, identity, token) => ...)
+  - onConnectError((ctx, error) => ...)
+  - onDisconnect((ctx, errorOrNull) => ...)
+- Optional auth:
+  - withToken(token?) to authenticate or force anonymous
+- Finalize:
+  - build() to connect
+
+DbContext (shared by connection + callback contexts)
+- Fields:
+  - db: DbView (client cache)
+  - reducers: Reducers (invoke reducers, register callbacks)
+- Methods:
+  - disconnect(): void
+  - subscriptionBuilder(): SubscriptionBuilder
+- Metadata:
+  - isActive: boolean
+
+Subscriptions
+- subscriptionBuilder() -> chain and subscribe
+- SubscriptionBuilder:
+  - onApplied((ctx) => ...)
+  - onError((ctx, error) => ...)
+  - subscribe(queries: string | string[])
+  - subscribeToAllTables() (convenience, no cancel)
+- SubscriptionHandle:
+  - isActive(): boolean
+  - isEnded(): boolean
+  - unsubscribe(): void
+  - unsubscribeThen((ctx) => ...): void
+
+Events and contexts
+- EventContext: DbContext + event: Event
+- ReducerEventContext: DbContext + event: ReducerEvent
+- SubscriptionEventContext: DbContext (no event field)
+- ErrorContext: DbContext + event: Error
+
+Event type
+Event<Reducer> variants:
+- { tag: 'Reducer'; value: ReducerEvent<Reducer> }
+- { tag: 'SubscribeApplied' }
+- { tag: 'UnsubscribeApplied' }
+- { tag: 'Error'; value: Error }
+- { tag: 'UnknownTransaction' }
+
+ReducerEvent
+- timestamp
+- status: UpdateStatus
+- callerIdentity: Identity
+- callerConnectionId?: ConnectionId
+- energyConsumed?: bigint
+- reducer: Reducer (module-specific enum + args)
+
+UpdateStatus
+- { tag: 'Committed' }
+- { tag: 'Failed'; value: string }
+- { tag: 'OutOfEnergy' }
+
+Client cache (ctx.db)
+- Each table is exposed as a camelCase accessor.
+- TableHandle methods:
+  - count(): number
+  - iter(): Iterable<Row>
+  - onInsert((ctx, row) => ...)
+  - onDelete((ctx, row) => ...)
+  - onUpdate((ctx, oldRow, newRow) => ...) (only if table has primary key)
+- Unique index access:
+  - handle.uniqueColumn.find(value) -> Row | undefined
+- BTree indexes: not supported in TS SDK
+
+Reducers (ctx.reducers)
+- Each reducer exposes:
+  - invoke method (camelCase reducer name)
+  - onReducerName callback registration (returns id)
+  - removeOnReducerName to remove callback
+
+Identify a client
+- Identity: unique public identifier for a client
+- ConnectionId: connection-scoped identifier (can differ for same Identity)
+
+Minimal example (pseudo)
+import { DbConnection } from './module_bindings';
+
+const conn = DbConnection.builder()
+  .withUri('https://spacetimedb-host')
+  .withModuleName('my-module')
+  .onConnect((ctx, identity, token) => {
+    ctx.subscriptionBuilder()
+      .onApplied(() => {
+        // rows now available in ctx.db
+      })
+      .subscribe('SELECT * FROM players');
+  })
+  .onConnectError((ctx, err) => console.error(err))
+  .build();
+
+// Invoke reducer
+conn.reducers.setName({ name: 'Ada' });
