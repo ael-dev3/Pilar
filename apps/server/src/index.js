@@ -16,7 +16,7 @@ const app = express();
 app.use(express.json());
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const webRoot = path.resolve(__dirname, "../../web");
+const webRoot = path.resolve(__dirname, "../../../public");
 app.use(express.static(webRoot));
 
 app.get("/api/health", (req, res) => {
