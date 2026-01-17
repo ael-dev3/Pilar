@@ -1,4 +1,5 @@
-const tileSize = 4;
+const minTileSize = 6;
+const tilesAcross = 50;
 const colors = {
   ground: "#e8d8b3",
   obelisk: "#3d3b35",
@@ -29,10 +30,11 @@ export function createGame({ ctx, net }) {
       return;
     }
     event.preventDefault();
+    const tileSize = getTileSize(canvas);
     const rect = canvas.getBoundingClientRect();
     const dx = event.clientX - rect.left - rect.width / 2;
     const dy = event.clientY - rect.top - rect.height / 2;
-    const deadZone = 12;
+    const deadZone = tileSize * 1.5;
     if (Math.abs(dx) < deadZone && Math.abs(dy) < deadZone) {
       net.sendBuild();
       return;
@@ -74,6 +76,7 @@ export function createGame({ ctx, net }) {
 
   function render() {
     const { player } = state;
+    const tileSize = getTileSize(canvas);
     ctx.fillStyle = colors.ground;
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
@@ -82,27 +85,27 @@ export function createGame({ ctx, net }) {
     }
 
     for (const space of state.spaces) {
-      drawSpace(space, player);
+      drawSpace(space, player, tileSize);
     }
 
-    const playerPos = toScreen(player.x, player.y, player);
+    const playerPos = toScreen(player.x, player.y, player, tileSize);
     ctx.fillStyle = colors.player;
     ctx.fillRect(playerPos.x, playerPos.y, tileSize, tileSize);
   }
 
-  function drawSpace(space, player) {
-    const homePos = toScreen(space.home.x, space.home.y, player);
+  function drawSpace(space, player, tileSize) {
+    const homePos = toScreen(space.home.x, space.home.y, player, tileSize);
     ctx.fillStyle = colors.home;
     ctx.fillRect(homePos.x, homePos.y, tileSize, tileSize);
 
     for (const tile of space.tiles) {
-      const pos = toScreen(tile.x, tile.y, player);
+      const pos = toScreen(tile.x, tile.y, player, tileSize);
       ctx.fillStyle = tile.type === "obelisk" ? colors.obelisk : colors.home;
       ctx.fillRect(pos.x, pos.y, tileSize, tileSize);
     }
   }
 
-  function toScreen(worldX, worldY, player) {
+  function toScreen(worldX, worldY, player, tileSize) {
     const offsetX = Math.floor(ctx.canvas.width / 2);
     const offsetY = Math.floor(ctx.canvas.height / 2);
     return {
@@ -124,4 +127,8 @@ export function createGame({ ctx, net }) {
     setState,
     start
   };
+}
+
+function getTileSize(canvas) {
+  return Math.max(minTileSize, Math.floor(canvas.width / tilesAcross));
 }
