@@ -1,14 +1,14 @@
 const minTileSize = 6;
 const tilesAcross = 50;
 const colors = {
-  ground: "#000000",
-  player: "#ffffff",
-  home: "#ffffff"
+  ground: "#ffffff",
+  player: "#000000",
+  home: "#000000"
 };
 const obeliskPalette = {
-  highlight: "#ffffff",
-  mid: "#d9d9d9",
-  shade: "#9a9a9a"
+  highlight: "#000000",
+  mid: "#000000",
+  shade: "#000000"
 };
 const cameraYaw = Math.PI / 4;
 const cameraPitch = -0.6;
@@ -37,6 +37,31 @@ export function createGame({ ctx, net }) {
     spaces: []
   };
   const canvas = ctx.canvas;
+  const pointer = {
+    x: 0,
+    y: 0,
+    active: false
+  };
+
+  function updatePointer(event) {
+    if (event.pointerType && event.pointerType !== "mouse") {
+      pointer.active = false;
+      return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    pointer.x = event.clientX - rect.left;
+    pointer.y = event.clientY - rect.top;
+    pointer.active = true;
+  }
+
+  canvas.addEventListener("pointermove", updatePointer);
+  canvas.addEventListener("pointerenter", updatePointer);
+  canvas.addEventListener("pointerleave", () => {
+    pointer.active = false;
+  });
+  canvas.addEventListener("pointercancel", () => {
+    pointer.active = false;
+  });
 
   canvas.addEventListener("pointerdown", (event) => {
     if (!state.player) {
@@ -147,17 +172,37 @@ export function createGame({ ctx, net }) {
     };
   }
 
+  function getHoverInfluence(baseX, baseY, tileSize) {
+    if (!pointer.active) {
+      return { strength: 0, angle: 0 };
+    }
+    const dx = pointer.x - baseX;
+    const dy = pointer.y - baseY;
+    const distance = Math.hypot(dx, dy);
+    const maxDistance = tileSize * 6;
+    if (distance > maxDistance) {
+      return { strength: 0, angle: 0 };
+    }
+    return {
+      strength: clamp(1 - distance / maxDistance, 0, 1),
+      angle: Math.atan2(dy, dx)
+    };
+  }
+
   function drawObelisk(space, player, tileSize, time) {
     const base = toScreen(space.home.x, space.home.y, player, tileSize);
     const baseX = base.x + tileSize * 0.5;
     const baseY = base.y + tileSize * 0.5;
     const seed = hashString(space.fid || "obelisk");
     const phase = (seed % 360) * (Math.PI / 180);
-    const rotation = time * 0.35 + phase;
-    const bob = Math.sin(time * 1.2 + phase) * 0.25;
+    const hover = getHoverInfluence(baseX, baseY, tileSize);
+    const wobble = hover.strength * Math.sin(time * 1.1 + phase) * 0.45;
+    const rotation =
+      phase + hover.angle * 0.55 * hover.strength + wobble;
+    const bob = Math.sin(time * 1.6 + phase) * 0.18 * hover.strength;
     const sin = Math.sin(rotation);
     const cos = Math.cos(rotation);
-    const dotRadius = Math.max(1.1, tileSize * 0.2);
+    const dotRadius = Math.max(0.8, tileSize * 0.12);
     const dots = [];
 
     for (const point of obeliskModel.points) {
@@ -198,8 +243,16 @@ export function createGame({ ctx, net }) {
           : shade < 0.35
             ? obeliskPalette.shade
             : obeliskPalette.mid;
-      const shimmer = 0.72 + 0.18 * Math.sin(time * 1.4 + point.phase + phase);
-      const size = dotRadius * scale * (0.9 + heightFade * 0.3);
+      const shimmer = clamp(
+        0.95 +
+          hover.strength *
+            0.08 *
+            Math.sin(time * 1.4 + point.phase + phase),
+        0.85,
+        1
+      );
+      const size =
+        dotRadius * scale * (0.8 + heightFade * 0.25 + hover.strength * 0.08);
       dots.push({
         x: baseX + screenX,
         y: baseY + screenY,
@@ -257,10 +310,10 @@ function getTileSize(canvas) {
 
 function createObeliskModel() {
   const points = [];
-  const height = 6.6;
-  const width = 3.6;
-  const depth = 2.4;
-  const spacing = 0.8;
+  const height = 7.2;
+  const width = 3.8;
+  const depth = 2.8;
+  const spacing = 0.9;
   let index = 0;
 
   for (let y = 0; y <= height; y += spacing) {
@@ -283,6 +336,17 @@ function createObeliskModel() {
   for (let x = -spacing; x <= spacing; x += spacing) {
     for (let z = -spacing; z <= spacing; z += spacing) {
       points.push(makePoint(x * 0.6, capY, z * 0.6, index++, 0, 1, 0));
+    }
+  }
+  const capY2 = capY + spacing * 0.45;
+  const capOffset = spacing * 0.45;
+  const capOffsets = [-capOffset, 0, capOffset];
+  for (const x of capOffsets) {
+    for (const z of capOffsets) {
+      if (x === 0 && z === 0) {
+        continue;
+      }
+      points.push(makePoint(x * 0.75, capY2, z * 0.75, index++, 0, 1, 0));
     }
   }
 

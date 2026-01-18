@@ -7,7 +7,7 @@
   --border: #000000;
   --accent: #000000;
   --accent-contrast: #ffffff;
-  --canvas-bg: #000000;
+  --canvas-bg: #ffffff;
 }
 
 * {
@@ -69,6 +69,19 @@ canvas {
   animation: rise-in 600ms ease-out both;
 }
 
+.hud-top {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hud-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .hud-pill {
   align-self: flex-start;
   pointer-events: auto;
@@ -80,6 +93,31 @@ canvas {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   box-shadow: none;
+}
+
+.hud-pill.hud-pill-muted {
+  opacity: 0.7;
+}
+
+.hud-pill.is-hidden {
+  display: none;
+}
+
+.hud-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.hud-toast {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  animation: toast-in 160ms ease-out both;
 }
 
 .hud-bottom {
@@ -154,6 +192,10 @@ canvas {
     animation: none;
   }
 
+  .hud-toast {
+    animation: none;
+  }
+
   #build-btn {
     transition: none;
   }
@@ -163,6 +205,17 @@ canvas {
   from {
     opacity: 0;
     transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
   }
   to {
     opacity: 1;

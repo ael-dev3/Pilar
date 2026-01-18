@@ -2,51 +2,88 @@ import { createGame } from "./game.js";
 import { createNet } from "./net.js";
 import { createHud } from "./ui.js";
 
+const app = document.getElementById("app");
 const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d", { alpha: false });
+const hudRoot = document.getElementById("hud");
 
-function resizeCanvas() {
-  const width = Math.floor(canvas.clientWidth);
-  const height = Math.floor(canvas.clientHeight);
-  if (!width || !height) {
-    return;
+if (!canvas || !hudRoot) {
+  if (app) {
+    app.textContent = "Pilar failed to load. Please refresh.";
   }
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
-    ctx.imageSmoothingEnabled = false;
+} else {
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  if (!ctx) {
+    hudRoot.textContent = "Canvas not supported.";
+  } else {
+    boot(ctx, hudRoot);
   }
 }
 
-window.addEventListener("resize", resizeCanvas);
-resizeCanvas();
+function boot(ctx, hudRoot) {
+  function resizeCanvas() {
+    const width = Math.floor(canvas.clientWidth);
+    const height = Math.floor(canvas.clientHeight);
+    if (!width || !height) {
+      return;
+    }
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+      ctx.imageSmoothingEnabled = false;
+    }
+  }
 
-const hud = createHud(document.getElementById("hud"));
-const net = createNet();
-const game = createGame({ ctx, net });
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas();
 
-const fid = getFid();
-let connectionLabel = "Connecting";
+  const hud = createHud(hudRoot);
+  const net = createNet();
+  const game = createGame({ ctx, net });
+  const hasCoarsePointer =
+    window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+  hud.setHint(
+    hasCoarsePointer
+      ? "Tap edge to move. Tap center or Build to place."
+      : "Move: WASD/Arrows or tap edge. Build: B/Space or tap center."
+  );
 
-function updateStatus() {
-  hud.setStatus(connectionLabel);
-}
+  const fid = getFid();
+  let connectionLabel = "Connecting";
 
-updateStatus();
+  function updateStatus() {
+    hud.setStatus(connectionLabel);
+  }
 
-net.onState((snapshot) => {
-  game.setState(snapshot);
-});
-
-net.onStatus((label) => {
-  connectionLabel = label;
   updateStatus();
-});
 
-hud.onBuild(() => net.sendBuild());
+  net.onState((snapshot) => {
+    game.setState(snapshot);
+  });
 
-game.start();
-net.join(fid);
+  net.onStatus((label) => {
+    connectionLabel = label;
+    updateStatus();
+  });
+
+  net.onNotify((items) => {
+    hud.showNotices(items);
+  });
+
+  net.onMail((items) => {
+    if (!Array.isArray(items)) {
+      hud.setMailCount(0);
+      return;
+    }
+    const unread = items.filter((item) => !item.read).length;
+    hud.setMailCount(unread || items.length);
+  });
+
+  hud.onBuild(() => net.sendBuild());
+
+  game.start();
+  net.join(fid);
+}
 
 function getFid() {
   const params = new URLSearchParams(window.location.search);
