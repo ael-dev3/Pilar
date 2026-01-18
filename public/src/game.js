@@ -40,7 +40,12 @@ export function createGame({ ctx, net }) {
   const pointer = {
     x: 0,
     y: 0,
-    active: false
+    targetX: 0,
+    targetY: 0,
+    vx: 0,
+    vy: 0,
+    active: false,
+    hasPosition: false
   };
 
   function updatePointer(event) {
@@ -49,8 +54,15 @@ export function createGame({ ctx, net }) {
       return;
     }
     const rect = canvas.getBoundingClientRect();
-    pointer.x = event.clientX - rect.left;
-    pointer.y = event.clientY - rect.top;
+    const nextX = event.clientX - rect.left;
+    const nextY = event.clientY - rect.top;
+    pointer.targetX = nextX;
+    pointer.targetY = nextY;
+    if (!pointer.hasPosition) {
+      pointer.x = nextX;
+      pointer.y = nextY;
+      pointer.hasPosition = true;
+    }
     pointer.active = true;
   }
 
@@ -58,9 +70,13 @@ export function createGame({ ctx, net }) {
   canvas.addEventListener("pointerenter", updatePointer);
   canvas.addEventListener("pointerleave", () => {
     pointer.active = false;
+    pointer.vx = 0;
+    pointer.vy = 0;
   });
   canvas.addEventListener("pointercancel", () => {
     pointer.active = false;
+    pointer.vx = 0;
+    pointer.vy = 0;
   });
 
   canvas.addEventListener("pointerdown", (event) => {
@@ -112,7 +128,26 @@ export function createGame({ ctx, net }) {
     state.spaces = snapshot.spaces || [];
   }
 
+  function updatePointerState() {
+    if (!pointer.hasPosition) {
+      return;
+    }
+    if (!pointer.active) {
+      pointer.vx *= 0.8;
+      pointer.vy *= 0.8;
+      return;
+    }
+    const follow = 0.18;
+    const dx = pointer.targetX - pointer.x;
+    const dy = pointer.targetY - pointer.y;
+    pointer.vx = dx * follow;
+    pointer.vy = dy * follow;
+    pointer.x += pointer.vx;
+    pointer.y += pointer.vy;
+  }
+
   function render(now) {
+    updatePointerState();
     const { player } = state;
     const tileSize = getTileSize(canvas);
     const time = now * 0.001;
@@ -173,7 +208,7 @@ export function createGame({ ctx, net }) {
   }
 
   function getHoverInfluence(baseX, baseY, tileSize) {
-    if (!pointer.active) {
+    if (!pointer.active || !pointer.hasPosition) {
       return { strength: 0, angle: 0 };
     }
     const dx = pointer.x - baseX;
@@ -184,8 +219,48 @@ export function createGame({ ctx, net }) {
       return { strength: 0, angle: 0 };
     }
     return {
-      strength: clamp(1 - distance / maxDistance, 0, 1),
+      strength: smoothstep(clamp(1 - distance / maxDistance, 0, 1)),
       angle: Math.atan2(dy, dx)
+    };
+  }
+
+  function getPointerFlow(x, y, tileSize, time, phase) {
+    if (!pointer.active || !pointer.hasPosition) {
+      return { x: 0, y: 0, strength: 0 };
+    }
+    const dx = x - pointer.x;
+    const dy = y - pointer.y;
+    const distance = Math.hypot(dx, dy);
+    const radius = tileSize * 5.5;
+    if (distance > radius) {
+      return { x: 0, y: 0, strength: 0 };
+    }
+    const t = smoothstep(clamp(1 - distance / radius, 0, 1));
+    const invDistance = distance ? 1 / distance : 1;
+    const radialX = dx * invDistance;
+    const radialY = dy * invDistance;
+    const repel = t * radius * 0.08;
+    const speed = Math.hypot(pointer.vx, pointer.vy);
+    let swirlSign = 1;
+
+    if (speed > 0.1) {
+      const vx = pointer.vx / speed;
+      const vy = pointer.vy / speed;
+      const cross = radialX * vy - radialY * vx;
+      swirlSign = cross >= 0 ? 1 : -1;
+    } else {
+      swirlSign = Math.sin(time * 0.6 + phase) >= 0 ? 1 : -1;
+    }
+
+    const swirlPhase = 0.6 + 0.4 * Math.sin(time * 1.2 + phase);
+    const swirl = t * radius * 0.05 * swirlPhase;
+    const tangentialX = -radialY * swirlSign;
+    const tangentialY = radialX * swirlSign;
+
+    return {
+      x: radialX * repel + tangentialX * swirl,
+      y: radialY * repel + tangentialY * swirl,
+      strength: t
     };
   }
 
@@ -229,6 +304,13 @@ export function createGame({ ctx, net }) {
       const scale = cameraDistance / depth;
       const screenX = camX * scale * tileSize;
       const screenY = camY * scale * tileSize;
+      const flow = getPointerFlow(
+        baseX + screenX,
+        baseY + screenY,
+        tileSize,
+        time,
+        point.phase + phase
+      );
 
       const light = clamp(
         0.2 + 0.8 * dot3(nx, ny, nz, lightDir.x, lightDir.y, lightDir.z),
@@ -244,18 +326,23 @@ export function createGame({ ctx, net }) {
             ? obeliskPalette.shade
             : obeliskPalette.mid;
       const shimmer = clamp(
-        0.95 +
-          hover.strength *
-            0.08 *
-            Math.sin(time * 1.4 + point.phase + phase),
-        0.85,
+        0.9 +
+          hover.strength * 0.06 +
+          flow.strength * 0.12 +
+          0.06 * Math.sin(time * 1.4 + point.phase + phase),
+        0.8,
         1
       );
       const size =
-        dotRadius * scale * (0.8 + heightFade * 0.25 + hover.strength * 0.08);
+        dotRadius *
+        scale *
+        (0.78 +
+          heightFade * 0.25 +
+          hover.strength * 0.08 +
+          flow.strength * 0.1);
       dots.push({
-        x: baseX + screenX,
-        y: baseY + screenY,
+        x: baseX + screenX + flow.x,
+        y: baseY + screenY + flow.y,
         depth,
         color,
         alpha: shimmer,
@@ -381,6 +468,11 @@ function randomFromSeed(seed) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function smoothstep(value) {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
 }
 
 function normalize3(x, y, z) {
