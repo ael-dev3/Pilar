@@ -84,7 +84,7 @@ canvas {
 
 .hud-pill {
   align-self: flex-start;
-  pointer-events: auto;
+  pointer-events: none;
   background: var(--surface);
   border: 2px solid var(--border);
   border-radius: 999px;
@@ -111,6 +111,7 @@ canvas {
 }
 
 .hud-toast {
+  pointer-events: none;
   background: var(--surface);
   border: 2px solid var(--border);
   border-radius: 12px;
@@ -125,7 +126,7 @@ canvas {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  pointer-events: auto;
+  pointer-events: none;
   align-self: center;
   width: min(100%, 360px);
   background: var(--surface);
@@ -152,6 +153,7 @@ canvas {
   background: var(--accent);
   color: var(--accent-contrast);
   cursor: pointer;
+  pointer-events: auto;
   box-shadow: none;
   transition: transform 120ms ease, filter 120ms ease;
 }

@@ -58,9 +58,11 @@ export function createGame({ ctx, net }) {
     const nextY = event.clientY - rect.top;
     pointer.targetX = nextX;
     pointer.targetY = nextY;
-    if (!pointer.hasPosition) {
+    if (!pointer.active || !pointer.hasPosition) {
       pointer.x = nextX;
       pointer.y = nextY;
+      pointer.vx = 0;
+      pointer.vy = 0;
       pointer.hasPosition = true;
     }
     pointer.active = true;
