@@ -1,11 +1,24 @@
 const minTileSize = 6;
 const tilesAcross = 50;
 const colors = {
-  ground: "#e8d8b3",
-  obelisk: "#3d3b35",
-  player: "#1f7a6c",
-  home: "#b89f70"
+  ground: "#000000",
+  player: "#ffffff",
+  home: "#ffffff"
 };
+const obeliskPalette = {
+  highlight: "#ffffff",
+  mid: "#d9d9d9",
+  shade: "#9a9a9a"
+};
+const cameraYaw = Math.PI / 4;
+const cameraPitch = -0.6;
+const cameraDistance = 12;
+const cameraYawSin = Math.sin(cameraYaw);
+const cameraYawCos = Math.cos(cameraYaw);
+const cameraPitchSin = Math.sin(cameraPitch);
+const cameraPitchCos = Math.cos(cameraPitch);
+const lightDir = normalize3(-0.4, 0.85, -0.2);
+const obeliskModel = createObeliskModel();
 
 const keyMap = {
   ArrowUp: [0, -1],
@@ -74,9 +87,10 @@ export function createGame({ ctx, net }) {
     state.spaces = snapshot.spaces || [];
   }
 
-  function render() {
+  function render(now) {
     const { player } = state;
     const tileSize = getTileSize(canvas);
+    const time = now * 0.001;
     ctx.fillStyle = colors.ground;
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
@@ -85,24 +99,43 @@ export function createGame({ ctx, net }) {
     }
 
     for (const space of state.spaces) {
-      drawSpace(space, player, tileSize);
+      drawSpace(space, player, tileSize, time);
     }
 
+    drawBuildReticle(tileSize, time);
+
     const playerPos = toScreen(player.x, player.y, player, tileSize);
+    const radius = tileSize * 0.55;
     ctx.fillStyle = colors.player;
-    ctx.fillRect(playerPos.x, playerPos.y, tileSize, tileSize);
+    ctx.beginPath();
+    ctx.arc(
+      playerPos.x + tileSize * 0.5,
+      playerPos.y + tileSize * 0.5,
+      radius,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, tileSize * 0.18);
+    ctx.strokeStyle = colors.ground;
+    ctx.stroke();
   }
 
-  function drawSpace(space, player, tileSize) {
+  function drawSpace(space, player, tileSize, time) {
     const homePos = toScreen(space.home.x, space.home.y, player, tileSize);
     ctx.fillStyle = colors.home;
     ctx.fillRect(homePos.x, homePos.y, tileSize, tileSize);
 
     for (const tile of space.tiles) {
+      if (tile.type === "obelisk") {
+        continue;
+      }
       const pos = toScreen(tile.x, tile.y, player, tileSize);
-      ctx.fillStyle = tile.type === "obelisk" ? colors.obelisk : colors.home;
+      ctx.fillStyle = colors.home;
       ctx.fillRect(pos.x, pos.y, tileSize, tileSize);
     }
+
+    drawObelisk(space, player, tileSize, time);
   }
 
   function toScreen(worldX, worldY, player, tileSize) {
@@ -114,8 +147,97 @@ export function createGame({ ctx, net }) {
     };
   }
 
-  function loop() {
-    render();
+  function drawObelisk(space, player, tileSize, time) {
+    const base = toScreen(space.home.x, space.home.y, player, tileSize);
+    const baseX = base.x + tileSize * 0.5;
+    const baseY = base.y + tileSize * 0.5;
+    const seed = hashString(space.fid || "obelisk");
+    const phase = (seed % 360) * (Math.PI / 180);
+    const rotation = time * 0.35 + phase;
+    const bob = Math.sin(time * 1.2 + phase) * 0.25;
+    const sin = Math.sin(rotation);
+    const cos = Math.cos(rotation);
+    const dotRadius = Math.max(1.1, tileSize * 0.2);
+    const dots = [];
+
+    for (const point of obeliskModel.points) {
+      const x = point.x + point.jitterX;
+      const z = point.z + point.jitterZ;
+      const y = point.y + bob;
+      const rx = x * cos - z * sin;
+      const rz = x * sin + z * cos;
+      const ry = y;
+
+      const nx = point.nx * cos - point.nz * sin;
+      const nz = point.nx * sin + point.nz * cos;
+      const ny = point.ny;
+
+      let camX = rx * cameraYawCos - rz * cameraYawSin;
+      let camZ = rx * cameraYawSin + rz * cameraYawCos;
+      let camY = ry * cameraPitchCos - camZ * cameraPitchSin;
+      camZ = ry * cameraPitchSin + camZ * cameraPitchCos;
+
+      const depth = cameraDistance + camZ;
+      if (depth <= 0.2) {
+        continue;
+      }
+      const scale = cameraDistance / depth;
+      const screenX = camX * scale * tileSize;
+      const screenY = camY * scale * tileSize;
+
+      const light = clamp(
+        0.2 + 0.8 * dot3(nx, ny, nz, lightDir.x, lightDir.y, lightDir.z),
+        0,
+        1
+      );
+      const heightFade = clamp(ry / obeliskModel.height, 0, 1);
+      const shade = clamp(light + heightFade * 0.2, 0, 1);
+      const color =
+        shade > 0.72
+          ? obeliskPalette.highlight
+          : shade < 0.35
+            ? obeliskPalette.shade
+            : obeliskPalette.mid;
+      const shimmer = 0.72 + 0.18 * Math.sin(time * 1.4 + point.phase + phase);
+      const size = dotRadius * scale * (0.9 + heightFade * 0.3);
+      dots.push({
+        x: baseX + screenX,
+        y: baseY + screenY,
+        depth,
+        color,
+        alpha: shimmer,
+        size
+      });
+    }
+
+    dots.sort((a, b) => a.depth - b.depth);
+    for (const dot of dots) {
+      ctx.globalAlpha = dot.alpha;
+      ctx.fillStyle = dot.color;
+      ctx.beginPath();
+      ctx.arc(dot.x, dot.y, dot.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawBuildReticle(tileSize, time) {
+    const centerX = Math.floor(ctx.canvas.width / 2);
+    const centerY = Math.floor(ctx.canvas.height / 2);
+    const pulse = 0.08 * Math.sin(time * 2);
+    const radius = tileSize * (0.9 + pulse);
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = colors.home;
+    ctx.lineWidth = Math.max(1, tileSize * 0.12);
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function loop(now) {
+    render(now);
     requestAnimationFrame(loop);
   }
 
@@ -131,4 +253,86 @@ export function createGame({ ctx, net }) {
 
 function getTileSize(canvas) {
   return Math.max(minTileSize, Math.floor(canvas.width / tilesAcross));
+}
+
+function createObeliskModel() {
+  const points = [];
+  const height = 6.6;
+  const width = 3.6;
+  const depth = 2.4;
+  const spacing = 0.8;
+  let index = 0;
+
+  for (let y = 0; y <= height; y += spacing) {
+    const t = y / height;
+    const taper = 1 - t * 0.35;
+    const halfW = (width * taper) / 2;
+    const halfD = (depth * taper) / 2;
+
+    for (let x = -halfW; x <= halfW; x += spacing) {
+      points.push(makePoint(x, y, -halfD, index++, 0, 0, -1));
+      points.push(makePoint(x, y, halfD, index++, 0, 0, 1));
+    }
+    for (let z = -halfD; z <= halfD; z += spacing) {
+      points.push(makePoint(-halfW, y, z, index++, -1, 0, 0));
+      points.push(makePoint(halfW, y, z, index++, 1, 0, 0));
+    }
+  }
+
+  const capY = height + spacing * 0.5;
+  for (let x = -spacing; x <= spacing; x += spacing) {
+    for (let z = -spacing; z <= spacing; z += spacing) {
+      points.push(makePoint(x * 0.6, capY, z * 0.6, index++, 0, 1, 0));
+    }
+  }
+
+  return {
+    points,
+    height,
+    width,
+    depth
+  };
+}
+
+function makePoint(x, y, z, index, nx, ny, nz) {
+  const jitterX = (randomFromSeed(index * 1.7) - 0.5) * 0.1;
+  const jitterZ = (randomFromSeed(index * 2.3) - 0.5) * 0.1;
+  return {
+    x,
+    y,
+    z,
+    jitterX,
+    jitterZ,
+    phase: index * 0.6,
+    nx,
+    ny,
+    nz
+  };
+}
+
+function randomFromSeed(seed) {
+  const value = Math.sin(seed) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalize3(x, y, z) {
+  const length = Math.hypot(x, y, z) || 1;
+  return { x: x / length, y: y / length, z: z / length };
+}
+
+function dot3(ax, ay, az, bx, by, bz) {
+  return ax * bx + ay * by + az * bz;
+}
+
+function hashString(value) {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
